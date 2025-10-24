@@ -3,6 +3,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from typing import Tuple, Optional
+import matplotlib.pyplot as plt
+import seaborn as sns
+from matplotlib.colors import ListedColormap
+
 
 st.set_page_config(layout="wide", page_title="Task1: Perceptron & Adaline")
 
@@ -38,6 +43,13 @@ def load_penguins() -> pd.DataFrame:
 # -------------------------
 
 # TODO: Implement weight initialization (small random values, optional bias)
+
+def initialize_weights(n_features, use_bias=True, seed=42, scale=0.01):
+    np.random.seed(seed)
+    weights = np.random.normal(0.0, scale, n_features)
+    bias = np.random.normal(0.0, scale) if use_bias else 0.0
+    return weights, bias
+    
 
 # TODO: Implement Perceptron training algorithm (update weights per sample, track errors per epoch)
 
@@ -141,7 +153,17 @@ if run_button:
         # • Initialize random weights and bias (if enabled).
         # • Use a random seed for reproducibility.
         # TODO: Implement Step 2
-        pass
+        n_features = 2  # always two because the UI enforces selecting exactly 2 features
+        weights, bias = initialize_weights(n_features=n_features,
+                                        use_bias=use_bias,
+                                        seed=seed,
+                                        scale=0.01)
+
+        # Display initialized parameters
+        st.write(f"**Weights shape:** {weights.shape}")
+        st.write(f"**Initial weights:** {np.round(weights, 6).tolist()}")
+        st.write(f"**Bias:** {round(bias, 6) if use_bias else 'None (disabled)'}")
+                
 
         # -----------------------------------------------------------
         # ✅ STEP 3 — Train the model
@@ -170,7 +192,160 @@ if run_button:
         # • Add labels and legend for both classes.
         # • Display the figure in Streamlit.
         # TODO: Implement Step 5
-        pass
+        def predict_linear(X, weights, bias=None):
+            """
+            X: (N,2) numpy array (standardized features)
+            weights: np.array shape (2,) or (3,) if augmented (last element bias)
+            bias: float or None (ignored if weights length==3)
+            returns predictions in {-1, +1}
+            """
+            w = np.asarray(weights) 
+            if w.ndim != 1:
+                w = w.ravel()
+            if w.size == 3:
+                # augmented: last element is bias
+                b = float(w[-1])
+                w = w[:2]
+            else:
+                b = 0.0 if bias is None else float(bias)
+            scores = X.dot(w) + b
+            preds = np.where(scores >= 0.0, 1, -1)
+            return preds, scores
+
+        def plot_decision_boundary_streamlit(X_train, y_train, X_test, y_test, weights, bias,
+                                            class_names, feature_names, show_test=True,
+                                            grid_steps=200, ax_size=(6,6)):
+            """
+            X_train/X_test: standardized numpy arrays shape (N,2)
+            y_train/y_test: labels in {-1, +1}
+            weights: np.array (2,) or (3,) augmented
+            bias: float or None
+            class_names: tuple/list like (class_for_-1, class_for_+1)
+            feature_names: tuple/list (feat1_name, feat2_name)
+            """
+            # Validate shapes
+            X_train = np.asarray(X_train)
+            X_test = np.asarray(X_test) if X_test is not None else None
+
+            # compute grid bounds in standardized feature space
+            all_X = X_train if X_test is None else np.vstack([X_train, X_test])
+            margin = 0.6
+            x_min, x_max = all_X[:,0].min() - margin, all_X[:,0].max() + margin
+            y_min, y_max = all_X[:,1].min() - margin, all_X[:,1].max() + margin
+
+            xx = np.linspace(x_min, x_max, grid_steps)
+            yy = np.linspace(y_min, y_max, grid_steps)
+            XX, YY = np.meshgrid(xx, yy)
+            grid = np.column_stack([XX.ravel(), YY.ravel()])
+
+            preds_grid, scores_grid = predict_linear(grid, weights, bias)
+            Z = preds_grid.reshape(XX.shape)
+
+            cmap_light = ListedColormap(['#FFEEEE', '#EEFFEE'])
+            cmap_points = ListedColormap(['#DD4444', '#22AA22'])
+
+            fig, ax = plt.subplots(figsize=ax_size)
+            ax.contourf(XX, YY, Z, alpha=0.3, cmap=cmap_light)
+
+            # plot training points
+            for lab, marker, edgecolor in [(-1, 'o', 'k'), (1, 's', 'k')]:
+                sel = (y_train == lab)
+                ax.scatter(X_train[sel, 0], X_train[sel, 1],
+                        marker=marker, s=60, label=f"Train: {class_names[0] if lab==-1 else class_names[1]}",
+                        edgecolor=edgecolor, linewidth=0.6)
+
+            # plot test points if available
+            if show_test and (X_test is not None) and (y_test is not None):
+                for lab, markerface in [(-1, 'none'), (1, 'none')]:
+                    sel = (y_test == lab)
+                    ax.scatter(X_test[sel, 0], X_test[sel, 1],
+                            marker='x', s=60, label=f"Test: {class_names[0] if lab==-1 else class_names[1]}",
+                            linewidth=1.2)
+
+            # decision boundary line (optional): derive from w
+            w = np.asarray(weights).ravel()
+            if w.size == 3:
+                b = float(w[-1]); w = w[:2]
+            else:
+                b = 0.0 if bias is None else float(bias)
+            if abs(w[1]) > 1e-8:
+                # x2 = -(w0/w1) x1 - b/w1
+                x_vals = np.array([x_min, x_max])
+                y_vals = -(w[0]/w[1]) * x_vals - (b / w[1])
+                ax.plot(x_vals, y_vals, 'k--', linewidth=1.2, label='Decision boundary')
+            else:
+                # vertical boundary x = -b/w0
+                if abs(w[0]) > 1e-8:
+                    x0 = -b / w[0]
+                    ax.axvline(x=x0, linestyle='--', color='k', label='Decision boundary')
+
+            ax.set_xlabel(feature_names[0] + " (standardized)")
+            ax.set_ylabel(feature_names[1] + " (standardized)")
+            ax.legend(loc='upper left', fontsize='small', framealpha=0.9)
+            ax.set_title("2D Decision Boundary — Linear Classifier")
+            plt.tight_layout()
+            return fig
+
+        # -------------- usage inside run_button ----------------
+        # Expected variables (from earlier steps):
+        # X_train, y_train, X_test, y_test  -> numpy arrays with standardized features shape (N,2)
+        # weights, bias                     -> initialized/trained weights (np.array) and bias float (or augmented weights)
+        # classes                            -> list like [classA_name, classB_name] corresponding to -1, +1 mapping
+        # selected_features                  -> list of two selected feature names (strings)
+        # history                            -> training history dict/list (optional)
+
+        # Defensive checks & fallbacks
+        _missing = []
+        if 'X_train' not in globals():
+            _missing.append("X_train")
+        if 'X_test' not in globals():
+            _missing.append("X_test")
+        if 'y_train' not in globals():
+            _missing.append("y_train")
+        if 'y_test' not in globals():
+            _missing.append("y_test")
+        if 'weights' not in globals():
+            _missing.append("weights")
+
+        if _missing:
+            st.warning("Cannot plot decision boundary: missing variables: " + ", ".join(_missing))
+        else:
+            # Ensure numpy arrays
+            X_train_arr = np.asarray(X_train)
+            X_test_arr = np.asarray(X_test) if 'X_test' in globals() else None
+            y_train_arr = np.asarray(y_train)
+            y_test_arr = np.asarray(y_test) if 'y_test' in globals() else None
+
+            # class names fallback: try classes variable else use mapping from sidebar selection
+            if 'classes' in globals():
+                class_names = classes
+            else:
+                # fallback uses class_pair from your sidebar selection where first->-1, second->+1
+                class_names = tuple(class_pair) if 'class_pair' in globals() else ("Class -1", "Class +1")
+
+            # feature names
+            feat_names = tuple(selected_features) if 'selected_features' in globals() else ("Feature1", "Feature2")
+
+            fig = plot_decision_boundary_streamlit(X_train_arr, y_train_arr, X_test_arr, y_test_arr,
+                                                weights, bias, class_names, feat_names)
+            st.pyplot(fig)
+
+            # Also show simple 1D metric (accuracy) and confusion matrix if y_test present
+            if (y_test_arr is not None) and (X_test_arr is not None):
+                preds_test, _ = predict_linear(X_test_arr, weights, bias)
+                # manual confusion matrix for positive class = +1 (second selected class)
+                TP = int(np.sum((preds_test == 1) & (y_test_arr == 1)))
+                TN = int(np.sum((preds_test == -1) & (y_test_arr == -1)))
+                FP = int(np.sum((preds_test == 1) & (y_test_arr == -1)))
+                FN = int(np.sum((preds_test == -1) & (y_test_arr == 1)))
+                acc = (TP + TN) / (TP + TN + FP + FN) if (TP+TN+FP+FN)>0 else 0.0
+
+                st.write("### Test evaluation")
+                st.write(f"Accuracy: **{acc*100:.2f}%**")
+                cm_df = pd.DataFrame([[TP, FP],[FN, TN]],
+                                    index=[f"Pred {class_names[1]}", f"Pred {class_names[0]}"],
+                                    columns=[f"Actual {class_names[1]}", f"Actual {class_names[0]}"])
+                st.table(cm_df)
 
         # -----------------------------------------------------------
         # ✅ STEP 6 — Display notes and dataset preview
@@ -178,4 +353,43 @@ if run_button:
         # • Add notes about label mapping and preprocessing.
         # • Optionally show sample rows from the training and testing datasets.
         # TODO: Implement Step 6
-        pass
+        st.write("---")
+        st.write("### Notes & dataset preview")
+
+        # Note about label mapping and preprocessing
+        st.markdown(
+            """
+            **Label mapping:**  
+            - The first class you selected (left in sidebar) is mapped to **-1**.  
+            - The second class is mapped to **+1**.  
+
+            **Preprocessing:**  
+            - Features were standardized using the *training set* mean and std (train mean/std used to transform test).  
+            - The decision boundary plot shows features in **standardized** space (mean=0, std=1).  
+            - If you want axis ticks in original units, we can invert the standardization (need train mean/std).
+            """
+        )
+
+        # Show a few rows from train/test if available
+        if 'train_df' in globals() and isinstance(train_df, pd.DataFrame):
+            st.write("#### Sample rows from training set")
+            st.dataframe(train_df.sample(min(10, len(train_df))).reset_index(drop=True))
+        elif 'X_train' in globals() and 'y_train' in globals():
+            # create a simple preview DataFrame from X_train/y_train (standardized)
+            preview = pd.DataFrame(X_train_arr[:10, :], columns=[f"{feat_names[0]}_std", f"{feat_names[1]}_std"])
+            preview['label'] = y_train_arr[:10]
+            # convert labels to class names for readability
+            preview['label_name'] = preview['label'].apply(lambda v: class_names[1] if v==1 else class_names[0])
+            st.write("#### Sample rows from (standardized) training set")
+            st.dataframe(preview)
+
+        if 'test_df' in globals() and isinstance(test_df, pd.DataFrame):
+            st.write("#### Sample rows from testing set")
+            st.dataframe(test_df.sample(min(10, len(test_df))).reset_index(drop=True))
+
+        st.write("### Quick tips")
+        st.markdown("""
+        - If the boundary looks strange (all points on one side), check that labels mapping (-1/+1) matches class order.
+        - To show axes in original units, provide `train_mean` and `train_std` or `scaler` so we can inverse-transform ticks.
+        - If you want a filled contour colored exactly by model score magnitude, I can add a colorbar with the raw scores.
+        """)
