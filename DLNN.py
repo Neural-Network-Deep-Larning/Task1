@@ -12,7 +12,7 @@ st.set_page_config(layout="wide", page_title="Task1: Perceptron & Adaline")
 @st.cache_data
 def load_penguins() -> pd.DataFrame:
     
-    path = r"D:\Downloads\Lab3\penguins.csv"
+    path = r"D:\semester_7\NN&DL\penguins.csv"
     df = pd.read_csv(path)
     # rename columns to match lab description if needed
     df = df.rename(columns={
@@ -39,9 +39,60 @@ def load_penguins() -> pd.DataFrame:
 
 # TODO: Implement weight initialization (small random values, optional bias)
 
-# TODO: Implement Perceptron training algorithm (update weights per sample, track errors per epoch)
 
-# TODO: Implement Adaline training algorithm (update using error, track MSE per epoch)
+def perceptron_train(X, y, lr=0.01, max_epochs=50, bias=True):
+   
+    samples, features = X.shape
+
+    # Add bias input (x0 = 1)
+    if bias:
+        X = np.column_stack((np.ones(samples), X))
+
+    # Random init for weights (small values)
+    weights = np.random.randn(X.shape[1]) * 0.01
+    epoch_errors = []
+
+    for _ in range(max_epochs):
+        mistakes = 0
+        for xi, target in zip(X, y):
+            activation = np.dot(weights, xi)
+            prediction = 1 if activation >= 0 else -1
+
+            if prediction != target:
+                weights += lr * (target - prediction) * xi
+                mistakes += 1
+
+        epoch_errors.append(mistakes)
+
+    return weights, epoch_errors
+
+
+
+def train_adaline(X_train, y_train, eta=0.01, epochs=50, use_bias=True):
+  
+    n_samples, n_features = X_train.shape
+
+    # Add bias as input 
+    if use_bias:
+        X_train = np.c_[np.ones((n_samples, 1)), X_train]
+
+    # Initialize weights
+    w = np.random.randn(X_train.shape[1]) * 0.01
+    mse_history = []
+
+    for _ in range(epochs):
+        y_pred = np.dot(X_train, w)
+
+        errors = y_train - y_pred
+     
+        w += eta * np.dot(X_train.T, errors)
+
+        mse = np.mean(errors ** 2) / 2
+        mse_history.append(mse)
+
+    return w, mse_history
+
+
 
 
 # -------------------------
