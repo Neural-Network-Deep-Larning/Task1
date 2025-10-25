@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import LabelEncoder,StandardScaler
 
 st.set_page_config(layout="wide", page_title="Task1: Perceptron & Adaline")
 
@@ -30,9 +31,20 @@ def load_penguins() -> pd.DataFrame:
 # preprocess
 # -------------------------
 
-
-
-
+def preprocess(df: pd.DataFrame) -> pd.DataFrame:
+    # handling nulls
+    df['CulmenLength'] = df.groupby('Species')['CulmenLength'].transform(lambda x: x.fillna(x.mean()))
+    df['CulmenDepth'] = df.groupby('Species')['CulmenDepth'].transform(lambda x: x.fillna(x.mean()))
+    df['FlipperLength'] = df.groupby('Species')['FlipperLength'].transform(lambda x: x.fillna(x.mean()))
+    df['BodyMass'] = df.groupby('Species')['BodyMass'].transform(lambda x: x.fillna(x.mean()))
+    #encoded species
+    encoder = LabelEncoder()
+    df['SpeciesEncoded'] = encoder.fit_transform(df['Species'])
+    #standradize
+    numeric_cols = ['CulmenLength', 'CulmenDepth', 'FlipperLength', 'BodyMass']
+    scaler = StandardScaler()
+    df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
+    return df
 # -------------------------
 # Algorithms Section 
 # -------------------------
