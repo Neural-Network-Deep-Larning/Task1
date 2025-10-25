@@ -40,10 +40,14 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
     #encoded species
     encoder = LabelEncoder()
     df['SpeciesEncoded'] = encoder.fit_transform(df['Species'])
+
     #standradize
     numeric_cols = ['CulmenLength', 'CulmenDepth', 'FlipperLength', 'BodyMass']
     scaler = StandardScaler()
     df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
+    #encode origin
+    df = pd.get_dummies(df, columns=['OriginLocation'])
+
     return df
 # -------------------------
 # Algorithms Section 
