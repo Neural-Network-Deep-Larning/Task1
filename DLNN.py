@@ -68,27 +68,32 @@ def perceptron_train(X, y, lr=0.01, max_epochs=50, bias=True):
 
 
 
-def train_adaline(X_train, y_train, eta=0.01, epochs=50, use_bias=True):
-  
+def train_adaline(X_train, y_train, eta=0.01, epochs=50, use_bias=True, mse_threshold=None):
+   
     n_samples, n_features = X_train.shape
 
-    # Add bias as input 
+    # Add bias input
     if use_bias:
         X_train = np.c_[np.ones((n_samples, 1)), X_train]
 
-    # Initialize weights
     w = np.random.randn(X_train.shape[1]) * 0.01
     mse_history = []
 
-    for _ in range(epochs):
+    for epoch in range(epochs):
+       
         y_pred = np.dot(X_train, w)
-
         errors = y_train - y_pred
-     
+
+        # Weight update (batch mode)
         w += eta * np.dot(X_train.T, errors)
 
+        
         mse = np.mean(errors ** 2) / 2
         mse_history.append(mse)
+
+        # Stop early if MSE threshold is reached
+        if mse_threshold is not None and mse < mse_threshold:
+            break
 
     return w, mse_history
 
@@ -197,12 +202,27 @@ if run_button:
         # -----------------------------------------------------------
         # ✅ STEP 3 — Train the model
         # -----------------------------------------------------------
-        # • If the selected algorithm is “Perceptron”, train using the Perceptron rule.
-        # • If the selected algorithm is “Adaline”, train using the Adaline rule.
-        # • Record the training history (errors or MSE per epoch).
-        # • Display the training progress as a line chart.
-        # TODO: Implement Step 3
-        pass
+        if algorithm == "Perceptron":
+            w, b, history = train_perceptron(X_train, y_train, eta, epochs, use_bias)
+            st.subheader("Perceptron Training Progress")
+            st.line_chart(history, height=250)
+            st.caption("Error count per epoch")
+
+        elif algorithm == "Adaline":
+            w, history = train_adaline(
+                X_train,
+                y_train,
+                eta=eta,
+                epochs=epochs,
+                use_bias=use_bias,
+                mse_threshold=mse_threshold
+            )
+            st.subheader("Adaline Training Progress")
+            st.line_chart(history, height=250)
+            st.caption("MSE per epoch")
+
+
+    
 
         # -----------------------------------------------------------
         # ✅ STEP 4 — Test and evaluate
