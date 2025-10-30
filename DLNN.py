@@ -3,6 +3,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from typing import Tuple, Dict
+from matplotlib.colors import ListedColormap
 
 st.set_page_config(layout="wide", page_title="Task1: Perceptron & Adaline")
 
@@ -12,7 +14,7 @@ st.set_page_config(layout="wide", page_title="Task1: Perceptron & Adaline")
 @st.cache_data
 def load_penguins() -> pd.DataFrame:
     
-    path = r"D:\semester_7\NN&DL\penguins.csv"
+    path = r"D:\Downloads\Lab3\penguins.csv"
     df = pd.read_csv(path)
     # rename columns to match lab description if needed
     df = df.rename(columns={
@@ -30,7 +32,24 @@ def load_penguins() -> pd.DataFrame:
 # preprocess
 # -------------------------
 
+def preprocess(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
+    df = df.copy()
 
+    # handling nulls
+    df['CulmenLength'] = df.groupby('Species')['CulmenLength'].transform(lambda x: x.fillna(x.mean()))
+    df['CulmenDepth'] = df.groupby('Species')['CulmenDepth'].transform(lambda x: x.fillna(x.mean()))
+    df['FlipperLength'] = df.groupby('Species')['FlipperLength'].transform(lambda x: x.fillna(x.mean()))
+    df['BodyMass'] = df.groupby('Species')['BodyMass'].transform(lambda x: x.fillna(x.mean()))
+    
+    if df["OriginLocation"].isnull().any():
+        df["OriginLocation"] = df["OriginLocation"].fillna(df["OriginLocation"].mode()[0])
+    # Encode OriginLocation as integers (not one-hot)
+    orig_levels = sorted(df["OriginLocation"].unique().tolist())
+    origin_map = {v: i for i, v in enumerate(orig_levels)}
+    df["OriginLocation_enc"] = df["OriginLocation"].map(origin_map)
+
+    info = {"origin_map": origin_map, "orig_levels": orig_levels}
+    return df, info
 
 
 # -------------------------
@@ -39,77 +58,142 @@ def load_penguins() -> pd.DataFrame:
 
 # TODO: Implement weight initialization (small random values, optional bias)
 
+def initialize_weights(n_features, use_bias=True, seed=42, scale=0.01):
+    np.random.seed(seed)
+    weights = np.random.normal(0.0, scale, n_features)
+    bias = np.random.normal(0.0, scale) if use_bias else 0.0
+    return weights, bias
 
-def perceptron_train(X, y, lr=0.01, max_epochs=50, bias=True):
+
+# -------------------------
+# Algorithms Section 
+# -------------------------
+
+# TODO: Implement weight initialization (small random values, optional bias)
+
+def perceptron_train(X, y, weights, bias, eta=0.01, epochs=50, use_bias=True):
    
-    samples, features = X.shape
-
-    # Add bias input (x0 = 1)
-    if bias:
-        X = np.column_stack((np.ones(samples), X))
-
-    # Random init for weights (small values)
-    weights = np.random.randn(X.shape[1]) * 0.01
-    epoch_errors = []
-
-    for _ in range(max_epochs):
-        mistakes = 0
-        for xi, target in zip(X, y):
-            activation = np.dot(weights, xi)
-            prediction = 1 if activation >= 0 else -1
-
-            if prediction != target:
-                weights += lr * (target - prediction) * xi
-                mistakes += 1
-
-        epoch_errors.append(mistakes)
-
-    return weights, epoch_errors
-
-
-
-def train_adaline(X_train, y_train, eta=0.01, epochs=50, use_bias=True, mse_threshold=None):
-   
-    n_samples, n_features = X_train.shape
-
-    # Add bias input
-    if use_bias:
-        X_train = np.c_[np.ones((n_samples, 1)), X_train]
-
-    w = np.random.randn(X_train.shape[1]) * 0.01
-    mse_history = []
-
+    n_samples = X.shape[0]
+    errors_history = []
+    
+    current_weights = weights.copy()
+    current_bias = bias
+    
     for epoch in range(epochs):
-       
-        y_pred = np.dot(X_train, w)
-        errors = y_train - y_pred
-
-        # Weight update (batch mode)
-        w += eta * np.dot(X_train.T, errors)
-
+        errors = 0
+        for i in range(n_samples):
+            # Calculate net input
+            net_input = np.dot(X[i], current_weights) + (current_bias if use_bias else 0)
+            
+            # Apply activation function (step function)
+            prediction = 1 if net_input >= 0 else -1
+            
+            # Update weights if misclassified
+            if prediction != y[i]:
+                errors += 1
+                update = eta * y[i]
+                current_weights += update * X[i]
+                if use_bias:
+                    current_bias += update
         
-        mse = np.mean(errors ** 2) / 2
-        mse_history.append(mse)
-
-        # Stop early if MSE threshold is reached
-        if mse_threshold is not None and mse < mse_threshold:
+        errors_history.append(errors)
+        
+        # Early stopping if no errors
+        if errors == 0:
             break
+    
+    return current_weights, current_bias, errors_history
 
-    return w, mse_history
-
-
-
+def adaline_train(X, y, weights, bias, eta=0.01, epochs=50, use_bias=True, mse_threshold=None):
+   
+    n_samples = X.shape[0]
+    mse_history = []
+    
+    current_weights = weights.copy()
+    current_bias = bias
+    
+    for epoch in range(epochs):
+        errors = []
+        for i in range(n_samples):
+            # Calculate net input (linear activation)
+            net_input = np.dot(X[i], current_weights) + (current_bias if use_bias else 0)
+            
+            # Calculate error (difference between net input and target)
+            error = y[i] - net_input
+            errors.append(error)
+            
+            # Update weights using gradient descent
+            update = eta * error
+            current_weights += update * X[i]
+            if use_bias:
+                current_bias += update
+        
+        # Calculate MSE for this epoch
+        mse = np.mean(np.array(errors) ** 2)
+        mse_history.append(mse)
+        
+        # Early stopping if MSE threshold is met
+        if mse_threshold is not None and mse <= mse_threshold:
+            break
+    
+    return current_weights, current_bias, mse_history
 
 # -------------------------
 # Helper Functions 
 # -------------------------
 
 # TODO: Split dataset into 30 training and 20 testing samples per class
+def split_by_class(data: pd.DataFrame, target_col: str, chosen_classes: Tuple[str, str], seed: int = 42):
+    
+    np.random.seed(seed)
+    train_list, test_list = [], []
+
+    for c in chosen_classes:
+        class_rows = data[data[target_col] == c].copy()
+        total = len(class_rows)
+
+        if total < 50:
+            st.warning(f"⚠️ Class '{c}' has only {total} samples (expected ~50). Using all available data.")
+
+        shuffled = np.random.permutation(class_rows.index)
+        cutoff = 30 if total >= 50 else int(total * 0.6)
+
+        train_rows = class_rows.loc[shuffled[:cutoff]]
+        test_rows = class_rows.loc[shuffled[cutoff:]]
+        train_list.append(train_rows)
+        test_list.append(test_rows)
+
+    train_data = pd.concat(train_list, ignore_index=True)
+    test_data = pd.concat(test_list, ignore_index=True)
+
+    return train_data, test_data
+
 
 # TODO: Standardize training and testing data using train mean and std
 
+
+def normalize_train_test(X_train: np.ndarray, X_test: np.ndarray):
+    
+    mean_vec = np.mean(X_train, axis=0)
+    std_vec = np.std(X_train, axis=0)
+    std_vec[std_vec == 0] = 1  # avoid division by zero
+
+    X_train_std = (X_train - mean_vec) / std_vec
+    X_test_std = (X_test - mean_vec) / std_vec
+
+    return X_train_std, X_test_std, mean_vec, std_vec
+
+
 # TODO: Create manual confusion matrix (TP, TN, FP, FN)
 
+def compute_confusion(y_true: np.ndarray, y_pred: np.ndarray, pos_label: int = 1):
+   
+    TP = int(np.sum((y_true == pos_label) & (y_pred == pos_label)))
+    TN = int(np.sum((y_true != pos_label) & (y_pred != pos_label)))
+    FP = int(np.sum((y_true != pos_label) & (y_pred == pos_label)))
+    FN = int(np.sum((y_true == pos_label) & (y_pred != pos_label)))
+
+    return {"TP": TP, "TN": TN, "FP": FP, "FN": FN}
 
 # -------------------------
 # Streamlit GUI
@@ -183,13 +267,25 @@ if run_button:
         # -----------------------------------------------------------
         # ✅ STEP 1 — Prepare train and test datasets
         # -----------------------------------------------------------
-        # • Split the data into train and test sets for the two selected classes.
-        # • Each class should have 30 training samples and 20 testing samples.
-        # • Extract the two chosen features.
-        # • Map labels: first selected class → -1, second selected class → +1.
-        # • Standardize the features (fit on train, apply on test).
-        # TODO: Implement Step 1
-        pass
+        st.subheader("Step 1 – Data Preparation")
+
+        # Split the two chosen classes into train and test
+        train_df, test_df = split_by_class(df_proc, "Species", tuple(class_pair), seed=seed)
+
+        # Extract only the chosen 2 features
+        X_train = train_df[selected_features].to_numpy(dtype=float)
+        X_test = test_df[selected_features].to_numpy(dtype=float)
+
+        # Map species → numeric labels  (-1 for first class, +1 for second)
+        label_map = {class_pair[0]: -1, class_pair[1]: 1}
+        y_train = train_df["Species"].map(label_map).to_numpy(dtype=int)
+        y_test = test_df["Species"].map(label_map).to_numpy(dtype=int)
+
+        # Standardize data (fit on train)
+        X_train_std, X_test_std, mu, sigma = normalize_train_test(X_train, X_test)
+
+        st.write(f"Training samples: {len(y_train)}, Testing samples: {len(y_test)}")
+        st.success("Data prepared successfully!")
 
         # -----------------------------------------------------------
         # ✅ STEP 2 — Initialize weights
@@ -197,32 +293,52 @@ if run_button:
         # • Initialize random weights and bias (if enabled).
         # • Use a random seed for reproducibility.
         # TODO: Implement Step 2
-        pass
+        n_features = 2  # always two because the UI enforces selecting exactly 2 features
+        weights, bias = initialize_weights(n_features=n_features,
+                                        use_bias=use_bias,
+                                        seed=seed,
+                                        scale=0.01)
 
+        # Display initialized parameters
+        st.write(f"**Weights shape:** {weights.shape}")
+        st.write(f"**Initial weights:** {np.round(weights, 6).tolist()}")
+        st.write(f"**Bias:** {round(bias, 6) if use_bias else 'None (disabled)'}")
+        
         # -----------------------------------------------------------
         # ✅ STEP 3 — Train the model
         # -----------------------------------------------------------
+        st.subheader("Step 3 – Training the Model")
+
         if algorithm == "Perceptron":
-            w, b, history = train_perceptron(X_train, y_train, eta, epochs, use_bias)
-            st.subheader("Perceptron Training Progress")
-            st.line_chart(history, height=250)
-            st.caption("Error count per epoch")
+            trained_weights, trained_bias, errors_history = perceptron_train(
+                X_train_std, y_train,
+                weights, bias,
+                eta=eta,
+                epochs=epochs,
+                use_bias=use_bias
+            )
+            st.success("Perceptron training complete!")
+            st.line_chart(errors_history, y_label="Number of Misclassifications per Epoch")
+            st.write(f"**Final Weights:** {np.round(trained_weights, 6).tolist()}")
+            st.write(f"**Final Bias:** {round(trained_bias, 6) if use_bias else 'None'}")
 
         elif algorithm == "Adaline":
-            w, history = train_adaline(
-                X_train,
-                y_train,
+            trained_weights, trained_bias, mse_history = adaline_train(
+                X_train_std, y_train,
+                weights, bias,
                 eta=eta,
                 epochs=epochs,
                 use_bias=use_bias,
                 mse_threshold=mse_threshold
             )
-            st.subheader("Adaline Training Progress")
-            st.line_chart(history, height=250)
-            st.caption("MSE per epoch")
+            st.success(" Adaline training complete!")
+            st.line_chart(mse_history, y_label="Mean Squared Error per Epoch")
+            st.write(f"**Final Weights:** {np.round(trained_weights, 6).tolist()}")
+            st.write(f"**Final Bias:** {round(trained_bias, 6) if use_bias else 'None'}")
 
+        # store final trained weights for next steps
+        weights, bias = trained_weights, trained_bias
 
-    
 
         # -----------------------------------------------------------
         # ✅ STEP 4 — Test and evaluate
@@ -231,7 +347,19 @@ if run_button:
         # • Construct the confusion matrix manually (TP, TN, FP, FN).
         # • Calculate and display accuracy.
         # TODO: Implement Step 4
-        pass
+        st.subheader("Step 4 – Testing & Evaluation")
+
+        # Temporary dummy weights for demo (to be replaced after training)
+        # Use w_init, b_init for now to keep consistent structure
+        y_pred = np.where(np.dot(X_test_std, weights) + (bias if use_bias else 0) >= 0, 1, -1)
+
+        # Confusion matrix + accuracy
+        cm = compute_confusion(y_test, y_pred, pos_label=1)
+        accuracy = (cm["TP"] + cm["TN"]) / len(y_test) * 100
+
+        st.write("Confusion matrix:")
+        st.json(cm)
+        st.write(f"Accuracy (with initial weights): **{accuracy:.2f}%**")
 
         # -----------------------------------------------------------
         # ✅ STEP 5 — Plot decision boundary
