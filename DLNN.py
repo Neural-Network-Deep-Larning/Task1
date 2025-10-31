@@ -484,33 +484,34 @@ if "weights" in st.session_state:
         feat2_val = st.number_input(f"Enter {selected_features[1]}:", value=0.0)
 
     if st.button("Predict Class"):
-        # 1️⃣ Create input vector
+        # Create input vector
         X_new = np.array([[feat1_val, feat2_val]])
 
-        # 2️⃣ Standardize using training μ and σ
+        # Standardize using training μ and σ
         mu = st.session_state["mu"]
         sigma = st.session_state["sigma"]
         X_new_std = (X_new - mu) / sigma
 
-        # 3️⃣ Get weights and bias
+        #  Get weights and bias
         weights = st.session_state["weights"]
         bias = st.session_state["bias"]
         use_bias = st.session_state["use_bias"]
 
-        # 4️⃣ Calculate net input
+        #  Calculate net input
         net_value = np.dot(X_new_std, weights) + (bias if use_bias else 0.0)
 
-        # 5️⃣ Apply signum activation
+        #  Apply signum activation
         y_output = np.where(net_value >= 0, 1, -1)
 
-        # 6️⃣ Map back to class labels
+        #  Map back to class labels
         class_pair = st.session_state["class_pair"]
         inv_label_map = {-1: class_pair[0], 1: class_pair[1]}
         predicted_label = inv_label_map[int(y_output)]
 
-        # 7️⃣ Display results
+        #  Display results
         st.write(f"**Net value:** {float(net_value):.4f}")
         st.write(f"**Signum output (y):** {int(y_output)}")
         st.success(f"Predicted Class: **{predicted_label}**")
 else:
-    st.info("👆 Train the model first, then enter values to predict.")
+    st.info(" Train the model first, then enter values to predict.")
+
