@@ -14,7 +14,7 @@ st.set_page_config(layout="wide", page_title="Task1: Perceptron & Adaline")
 @st.cache_data
 def load_penguins() -> pd.DataFrame:
     
-    path = r"D:\Downloads\Lab3\penguins.csv"
+    path = r"./penguins.csv"
     df = pd.read_csv(path)
     # rename columns to match lab description if needed
     df = df.rename(columns={
@@ -204,7 +204,7 @@ df = load_penguins()
 df_proc, info = preprocess(df)
 
 with st.sidebar:
-    st.header("Experiment settings")
+    st.header("Experiment Settings")
 
     feat_options = ["CulmenLength", "CulmenDepth", "FlipperLength", "OriginLocation_enc", "BodyMass"]
     selected_features = st.multiselect(
@@ -253,35 +253,28 @@ with st.sidebar:
     run_button = st.button("Run Training", disabled=not valid_selection)
 
 if not valid_selection:
-    st.info("Please select exactly 2 features and exactly 2 classes to continue.")
-
+    st.info("Please select exactly 2 features and 2 classes to continue.")
 
 # ===============================================================
-# 🚧 MAIN IMPLEMENTATION SECTION — To be completed by the team 🚧
+# MAIN LOGIC
 # ===============================================================
-# Only run when button clicked and choices valid
 if run_button:
     if len(selected_features) != 2 or len(class_pair) != 2:
-        st.error("Please select exactly 2 features and exactly 2 classes in the sidebar.")
+        st.error("Please select exactly 2 features and 2 classes in the sidebar.")
     else:
         # -----------------------------------------------------------
-        # ✅ STEP 1 — Prepare train and test datasets
+        # ✅ STEP 1 — Data Preparation
         # -----------------------------------------------------------
         st.subheader("Step 1 – Data Preparation")
-
-        # Split the two chosen classes into train and test
         train_df, test_df = split_by_class(df_proc, "Species", tuple(class_pair), seed=seed)
 
-        # Extract only the chosen 2 features
         X_train = train_df[selected_features].to_numpy(dtype=float)
         X_test = test_df[selected_features].to_numpy(dtype=float)
 
-        # Map species → numeric labels  (-1 for first class, +1 for second)
         label_map = {class_pair[0]: -1, class_pair[1]: 1}
         y_train = train_df["Species"].map(label_map).to_numpy(dtype=int)
         y_test = test_df["Species"].map(label_map).to_numpy(dtype=int)
 
-        # Standardize data (fit on train)
         X_train_std, X_test_std, mu, sigma = normalize_train_test(X_train, X_test)
 
         st.write(f"Training samples: {len(y_train)}, Testing samples: {len(y_test)}")
@@ -290,160 +283,125 @@ if run_button:
         # -----------------------------------------------------------
         # ✅ STEP 2 — Initialize weights
         # -----------------------------------------------------------
-        # • Initialize random weights and bias (if enabled).
-        # • Use a random seed for reproducibility.
-        # TODO: Implement Step 2
-        n_features = 2  # always two because the UI enforces selecting exactly 2 features
-        weights, bias = initialize_weights(n_features=n_features,
-                                        use_bias=use_bias,
-                                        seed=seed,
-                                        scale=0.01)
-
-        # Display initialized parameters
-        st.write(f"**Weights shape:** {weights.shape}")
-        st.write(f"**Initial weights:** {np.round(weights, 6).tolist()}")
+        n_features = 2
+        weights, bias = initialize_weights(n_features=n_features, use_bias=use_bias, seed=seed, scale=0.01)
+        st.write(f"**Initial Weights:** {np.round(weights, 6).tolist()}")
         st.write(f"**Bias:** {round(bias, 6) if use_bias else 'None (disabled)'}")
-        
+
         # -----------------------------------------------------------
-        # ✅ STEP 3 — Train the model
+        # ✅ STEP 3 — Training
         # -----------------------------------------------------------
         st.subheader("Step 3 – Training the Model")
-
         if algorithm == "Perceptron":
             trained_weights, trained_bias, errors_history = perceptron_train(
-                X_train_std, y_train,
-                weights, bias,
-                eta=eta,
-                epochs=epochs,
-                use_bias=use_bias
+                X_train_std, y_train, weights, bias, eta=eta, epochs=epochs, use_bias=use_bias
             )
             st.success("Perceptron training complete!")
-            st.line_chart(errors_history, y_label="Number of Misclassifications per Epoch")
-            st.write(f"**Final Weights:** {np.round(trained_weights, 6).tolist()}")
-            st.write(f"**Final Bias:** {round(trained_bias, 6) if use_bias else 'None'}")
-
-        elif algorithm == "Adaline":
+            st.line_chart(errors_history, y_label="Misclassifications per Epoch")
+        else:
             trained_weights, trained_bias, mse_history = adaline_train(
-                X_train_std, y_train,
-                weights, bias,
-                eta=eta,
-                epochs=epochs,
-                use_bias=use_bias,
-                mse_threshold=mse_threshold
+                X_train_std, y_train, weights, bias, eta=eta, epochs=epochs,
+                use_bias=use_bias, mse_threshold=mse_threshold
             )
-            st.success(" Adaline training complete!")
+            st.success("Adaline training complete!")
             st.line_chart(mse_history, y_label="Mean Squared Error per Epoch")
-            st.write(f"**Final Weights:** {np.round(trained_weights, 6).tolist()}")
-            st.write(f"**Final Bias:** {round(trained_bias, 6) if use_bias else 'None'}")
 
-        # store final trained weights for next steps
-        weights, bias = trained_weights, trained_bias
+        st.write(f"**Final Weights:** {np.round(trained_weights, 6).tolist()}")
+        st.write(f"**Final Bias:** {round(trained_bias, 6) if use_bias else 'None'}")
 
+        # Save model to session state
+        st.session_state["weights"] = trained_weights
+        st.session_state["bias"] = trained_bias
+        st.session_state["mu"] = mu
+        st.session_state["sigma"] = sigma
+        st.session_state["use_bias"] = use_bias
+        st.session_state["class_pair"] = class_pair
+        st.session_state["selected_features"] = selected_features
+        st.session_state["algorithm"] = algorithm
+        st.success("Model saved to session.")
 
         # -----------------------------------------------------------
-        # ✅ STEP 4 — Test and evaluate
+        # ✅ STEP 4 — Test & Evaluation
         # -----------------------------------------------------------
-        # • Compute the model’s predictions for the test set.
-        # • Construct the confusion matrix manually (TP, TN, FP, FN).
-        # • Calculate and display accuracy.
-        # TODO: Implement Step 4
         st.subheader("Step 4 – Testing & Evaluation")
-
-        # Temporary dummy weights for demo (to be replaced after training)
-        # Use w_init, b_init for now to keep consistent structure
-        y_pred = np.where(np.dot(X_test_std, weights) + (bias if use_bias else 0) >= 0, 1, -1)
-
-        # Confusion matrix + accuracy
+        y_pred = np.where(np.dot(X_test_std, trained_weights) + (trained_bias if use_bias else 0) >= 0, 1, -1)
         cm = compute_confusion(y_test, y_pred, pos_label=1)
         accuracy = (cm["TP"] + cm["TN"]) / len(y_test) * 100
-
-        st.write("Confusion matrix:")
         st.json(cm)
-        st.write(f"Accuracy : **{accuracy:.2f}%**")
-
+        st.write(f"Accuracy: **{accuracy:.2f}%**")
 
         # -----------------------------------------------------------
-        # ✅ STEP 5 — Plot Decision Boundary (in original coordinates)
+        # ✅ STEP 5 — Decision Boundary
         # -----------------------------------------------------------
         st.subheader("Step 5 – Decision Boundary Visualization")
-
-        # Prepare data for plotting (in original feature scale)
         X_all = np.vstack([X_train, X_test])
         y_all = np.concatenate([y_train, y_test])
 
         fig, ax = plt.subplots(figsize=(7, 6))
-
-        # Compute x-values across original range
         x_vals = np.linspace(X_all[:, 0].min() - 1, X_all[:, 0].max() + 1, 200)
-
-        # Decision boundary derived from standardized-space equation:
-        # w0*(x-mu0)/s0 + w1*(y-mu1)/s1 + b = 0
-        # => y = mu1 + s1 * ( -b - w0*(x-mu0)/s0 ) / w1
         mu0, mu1 = mu[0], mu[1]
         s0, s1 = sigma[0], sigma[1]
+        weights, bias = trained_weights, trained_bias
 
         if abs(weights[1]) < 1e-12:
-            # vertical boundary: w0*(x-mu0)/s0 + b = 0 → x = mu0 - b*s0/w0
             if abs(weights[0]) < 1e-12:
-                st.warning("Degenerate weights: cannot draw a valid decision boundary.")
+                st.warning("Degenerate weights: cannot draw decision boundary.")
             else:
                 x_decision = mu0 - (bias * s0 / weights[0])
-                ax.axvline(x=x_decision, linestyle="--", linewidth=2, color="k")
+                ax.axvline(x=x_decision, linestyle="--", color="k")
         else:
-            y_vals = mu1 + s1 * ( -bias - weights[0] * (x_vals - mu0) / s0 ) / weights[1]
-            ax.plot(x_vals, y_vals, linestyle="--", linewidth=2, color="k", label="Decision boundary")
+            y_vals = mu1 + s1 * (-bias - weights[0] * (x_vals - mu0) / s0) / weights[1]
+            ax.plot(x_vals, y_vals, linestyle="--", color="k", label="Decision boundary")
 
-        # Map back labels for legend
         inv_label_map = {-1: class_pair[0], 1: class_pair[1]}
-
-        # Plot training points
         for lab_val, lab_name in inv_label_map.items():
             mask_tr = (y_train == lab_val)
-            ax.scatter(X_train[mask_tr, 0], X_train[mask_tr, 1],
-                       marker="o", s=60, label=f"Train {lab_name}", alpha=0.8)
-
-        # Plot test points
-        for lab_val, lab_name in inv_label_map.items():
+            ax.scatter(X_train[mask_tr, 0], X_train[mask_tr, 1], marker="o", s=60, label=f"Train {lab_name}")
             mask_te = (y_test == lab_val)
-            ax.scatter(X_test[mask_te, 0], X_test[mask_te, 1],
-                       marker="x", s=80, label=f"Test {lab_name}")
+            ax.scatter(X_test[mask_te, 0], X_test[mask_te, 1], marker="x", s=80, label=f"Test {lab_name}")
 
         ax.set_xlabel(selected_features[0])
         ax.set_ylabel(selected_features[1])
         ax.legend()
-        ax.set_title(f"{algorithm} Decision Boundary between {class_pair[0]} and {class_pair[1]}")
         st.pyplot(fig)
 
         # -----------------------------------------------------------
-        # ✅ STEP 6 — Notes & Dataset Preview
+        # ✅ STEP 6 – Notes
         # -----------------------------------------------------------
         st.subheader("Step 6 – Notes & Dataset Preview")
-
-        st.info(
-            "Labels mapped: first selected class → -1, second selected class → +1. "
-            "OriginLocation was encoded as integers (OriginLocation_enc). "
-            "No rows were dropped — missing values were imputed."
-        )
-
-        st.markdown("""
-        **Additional info:**  
-        - Features were standardized using training mean & std (μ, σ).  
-        - The decision boundary was drawn back in *original* feature coordinates.  
-        - Training and test samples are shown separately (circle = train, × = test).  
-        """)
-
-        # Show confusion matrix summary
-        preds_test = np.where(np.dot(X_test_std, weights) + (bias if use_bias else 0.0) >= 0, 1, -1)
-        cm = compute_confusion(y_test, preds_test, pos_label=1)
-        acc = (cm["TP"] + cm["TN"]) / len(y_test) * 100
-        st.write(f"**Final Accuracy:** {acc:.2f}%")
-
-        st.write("Confusion Matrix:")
-        st.json(cm)
-
-        # Data preview (expandable)
-        with st.expander("Show train/test sample data (raw values)"):
-            st.write("Training set (first 10 rows):")
+        st.info("Features standardized using training mean & std. Circle = train, × = test.")
+        with st.expander("Show train/test sample data"):
             st.dataframe(train_df.head(10))
-            st.write("Test set (first 10 rows):")
             st.dataframe(test_df.head(10))
+
+# -----------------------------------------------------------
+# ✅ STEP 7 — Predict New Sample (Persistent)
+# -----------------------------------------------------------
+if "weights" in st.session_state:
+    st.subheader("Step 7 – Predict a New Sample")
+
+    selected_features = st.session_state["selected_features"]
+    col1, col2 = st.columns(2)
+    with col1:
+        feat1_val = st.number_input(f"Enter {selected_features[0]}:", value=0.0)
+    with col2:
+        feat2_val = st.number_input(f"Enter {selected_features[1]}:", value=0.0)
+
+    if st.button("Predict Class"):
+        X_new = np.array([[feat1_val, feat2_val]])
+        X_new_std = (X_new - st.session_state["mu"]) / st.session_state["sigma"]
+
+        weights = st.session_state["weights"]
+        bias = st.session_state["bias"]
+        use_bias = st.session_state["use_bias"]
+        class_pair = st.session_state["class_pair"]
+
+        y_pred_new = np.dot(X_new_std, weights) + (bias if use_bias else 0.0)
+        y_class = 1 if y_pred_new >= 0 else -1
+        inv_label_map = {-1: class_pair[0], 1: class_pair[1]}
+        predicted_label = inv_label_map[y_class]
+
+        st.success(f"Predicted Class: **{predicted_label}**")
+        st.write(f"Raw model output: {float(y_pred_new):.4f}")
+else:
+    st.info("👆 Train the model first, then enter values to predict.")
