@@ -14,7 +14,7 @@ st.set_page_config(layout="wide", page_title="Task1: Perceptron & Adaline")
 @st.cache_data
 def load_penguins() -> pd.DataFrame:
     
-    path = r"./penguins.csv"
+    path = r"D:\Downloads\Lab3\penguins.csv"
     df = pd.read_csv(path)
     # rename columns to match lab description if needed
     df = df.rename(columns={
@@ -334,44 +334,137 @@ if run_button:
         # ✅ STEP 5 — Decision Boundary
         # -----------------------------------------------------------
         st.subheader("Step 5 – Decision Boundary Visualization")
-        X_all = np.vstack([X_train, X_test])
+
+        # Combine train/test in original scales for plotting
+        X_all = np.vstack([X_train, X_test])           # original feature scales
         y_all = np.concatenate([y_train, y_test])
 
-        fig, ax = plt.subplots(figsize=(7, 6))
-        x_vals = np.linspace(X_all[:, 0].min() - 1, X_all[:, 0].max() + 1, 200)
-        mu0, mu1 = mu[0], mu[1]
-        s0, s1 = sigma[0], sigma[1]
-        weights, bias = trained_weights, trained_bias
+        fig, ax = plt.subplots(figsize=(8, 6))
 
+        # create a mesh over the original feature ranges
+        padding_x = (X_all[:, 0].max() - X_all[:, 0].min()) * 0.12
+        padding_y = (X_all[:, 1].max() - X_all[:, 1].min()) * 0.12
+        x_min, x_max = X_all[:, 0].min() - padding_x, X_all[:, 0].max() + padding_x
+        y_min, y_max = X_all[:, 1].min() - padding_y, X_all[:, 1].max() + padding_y
+
+        xx, yy = np.meshgrid(
+            np.linspace(x_min, x_max, 300),
+            np.linspace(y_min, y_max, 300)
+        )
+
+        # flatten grid and standardize using training mean & std (mu, sigma)
+        grid = np.c_[xx.ravel(), yy.ravel()]                  # original coords
+        grid_std = (grid - mu) / sigma                        # standardize each column
+
+        # get model prediction on standardized grid
+        net_grid = np.dot(grid_std, weights) + (bias if use_bias else 0.0)
+        grid_pred = np.where(net_grid >= 0.0, 1, -1).reshape(xx.shape)
+
+        # plot the decision regions (background)
+        cmap_regions = ListedColormap(["#FFEEEE", "#EEEEFF"])
+        ax.contourf(xx, yy, grid_pred, alpha=0.5, cmap=cmap_regions, levels=[-1, 0, 1])
+
+        # plot the decision boundary line explicitly (optional, for clarity)
+        # We can compute boundary by solving for y in original coordinates when w1 != 0
         if abs(weights[1]) < 1e-12:
+            # vertical boundary
             if abs(weights[0]) < 1e-12:
-                st.warning("Degenerate weights: cannot draw decision boundary.")
+                st.warning("Degenerate weights: cannot draw a valid decision boundary.")
             else:
-                x_decision = mu0 - (bias * s0 / weights[0])
-                ax.axvline(x=x_decision, linestyle="--", color="k")
+                x_decision = mu[0] - (bias * sigma[0] / weights[0])
+                ax.axvline(x=x_decision, linestyle="--", linewidth=2, color="k", label="Decision boundary")
         else:
-            y_vals = mu1 + s1 * (-bias - weights[0] * (x_vals - mu0) / s0) / weights[1]
-            ax.plot(x_vals, y_vals, linestyle="--", color="k", label="Decision boundary")
+            x_vals = np.linspace(x_min, x_max, 400)
+            y_vals = mu[1] + sigma[1] * ( -bias - weights[0] * (x_vals - mu[0]) / sigma[0] ) / weights[1]
+            ax.plot(x_vals, y_vals, linestyle="--", linewidth=2, color="k", label="Decision boundary")
 
+        # Plot train/test points with clear markers & single legend entry per set
         inv_label_map = {-1: class_pair[0], 1: class_pair[1]}
+
+        # To avoid duplicate legend entries, collect handles manually
+        handles = []
+        labels = []
         for lab_val, lab_name in inv_label_map.items():
             mask_tr = (y_train == lab_val)
-            ax.scatter(X_train[mask_tr, 0], X_train[mask_tr, 1], marker="o", s=60, label=f"Train {lab_name}")
-            mask_te = (y_test == lab_val)
-            ax.scatter(X_test[mask_te, 0], X_test[mask_te, 1], marker="x", s=80, label=f"Test {lab_name}")
+            h_tr = ax.scatter(X_train[mask_tr, 0], X_train[mask_tr, 1],
+                       marker="o", s=60, label=f"Train: {lab_name}", edgecolor="k", linewidth=0.4, alpha=0.9)
+            handles.append(h_tr)
+            labels.append(f"Train: {lab_name}")
 
+            mask_te = (y_test == lab_val)
+            h_te = ax.scatter(X_test[mask_te, 0], X_test[mask_te, 1],
+                       marker="X", s=80, label=f"Test: {lab_name}", edgecolor="k", linewidth=0.8)
+            handles.append(h_te)
+            labels.append(f"Test: {lab_name}")
+
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
         ax.set_xlabel(selected_features[0])
         ax.set_ylabel(selected_features[1])
-        ax.legend()
-        st.pyplot(fig)
+        ax.set_title(f"{algorithm} Decision Boundary between {class_pair[0]} and {class_pair[1]}")
+        ax.legend(handles=handles, labels=labels, loc="upper right", fontsize="small", framealpha=0.9)
+        ax.grid(True)
 
+        st.pyplot(fig)
         # -----------------------------------------------------------
         # ✅ STEP 6 – Notes
         # -----------------------------------------------------------
-        st.subheader("Step 6 – Notes & Dataset Preview")
-        st.info("Features standardized using training mean & std. Circle = train, × = test.")
-        with st.expander("Show train/test sample data"):
+        st.subheader("Step 6 – Notes, Metrics & Dataset Preview")
+
+        st.info(
+            "Labels mapped: first selected class → -1, second selected class → +1. "
+            "OriginLocation was encoded as integers (OriginLocation_enc). "
+            "Missing values were imputed using per-class means where possible."
+        )
+
+        st.markdown(
+            "**Additional info:**  \n"
+            "- Features were standardized using training mean & std (μ, σ).  \n"
+            "- The decision boundary and decision regions were plotted back in original feature coordinates.  \n"
+            "- Circle = train points, × = test points."
+        )
+
+        # Recompute test predictions (just in case) using standardized test features
+        preds_test = np.where(np.dot(X_test_std, weights) + (bias if use_bias else 0.0) >= 0, 1, -1)
+
+        # Confusion matrix and derived metrics
+        cm = compute_confusion(y_test, preds_test, pos_label=1)
+        TP, TN, FP, FN = cm["TP"], cm["TN"], cm["FP"], cm["FN"]
+        accuracy = (TP + TN) / max(1, len(y_test))
+        precision = TP / (TP + FP) if (TP + FP) > 0 else 0.0
+        recall = TP / (TP + FN) if (TP + FN) > 0 else 0.0
+        f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+
+        metrics_df = pd.DataFrame({
+            "Metric": ["TP", "TN", "FP", "FN", "Accuracy", "Precision", "Recall", "F1"],
+            "Value": [TP, TN, FP, FN, f"{accuracy*100:.2f}%", f"{precision:.3f}", f"{recall:.3f}", f"{f1:.3f}"]
+        })
+
+        st.write("Confusion matrix and metrics:")
+        st.dataframe(metrics_df, width=420)
+
+        # Also show a tidy confusion matrix as a table
+        cm_table = pd.DataFrame([[TP, FP], [FN, TN]],
+                                index=[f"True {inv_label_map[1]}", f"True {inv_label_map[-1]}"],
+                                columns=[f"Pred {inv_label_map[1]}", f"Pred {inv_label_map[-1]}"])
+        st.write("Confusion matrix (table):")
+        st.table(cm_table)
+
+        # Show training history chart more robustly (if Perceptron: errors_history, if Adaline: mse_history)
+        st.write("Training history:")
+        if algorithm == "Perceptron":
+            # errors_history variable exists earlier in the perceptron branch
+            ser = pd.Series(errors_history, name="Misclassifications")
+            st.line_chart(ser)
+        else:
+            ser = pd.Series(mse_history, name="MSE")
+            st.line_chart(ser)
+
+        # Data preview (expandable)
+        with st.expander("Show train/test sample data (raw values)"):
+            st.write("Training set (first 10 rows):")
             st.dataframe(train_df.head(10))
+            st.write("Test set (first 10 rows):")
             st.dataframe(test_df.head(10))
 
 # -----------------------------------------------------------
