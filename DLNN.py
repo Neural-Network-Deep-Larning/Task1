@@ -425,7 +425,7 @@ if run_button:
         )
 
         # Recompute test predictions (just in case) using standardized test features
-        preds_test = np.where(np.dot(X_test_std, weights) + (bias if use_bias else 0.0) >= 0, 1, -1)
+ preds_test = np.where(np.dot(X_test_std, trained_weights) + (trained_bias if use_bias else 0.0) >= 0, 1, -1)
 
         # Confusion matrix and derived metrics
         cm = compute_confusion(y_test, preds_test, pos_label=1)
@@ -511,3 +511,4 @@ if "weights" in st.session_state:
         st.success(f"Predicted Class: **{predicted_label}**")
 else:
     st.info("👆 Train the model first, then enter values to predict.")
+
