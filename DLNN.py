@@ -14,7 +14,7 @@ st.set_page_config(layout="wide", page_title="Task1: Perceptron & Adaline")
 @st.cache_data
 def load_penguins() -> pd.DataFrame:
     
-    path = r"D:\Downloads\Lab3\penguins.csv"
+    path = r"D:\semester_7\NN&DL\penguins.csv"
     df = pd.read_csv(path)
     # rename columns to match lab description if needed
     df = df.rename(columns={
@@ -153,7 +153,7 @@ def split_by_class(data: pd.DataFrame, target_col: str, chosen_classes: Tuple[st
         total = len(class_rows)
 
         if total < 50:
-            st.warning(f"⚠️ Class '{c}' has only {total} samples (expected ~50). Using all available data.")
+            st.warning(f"Class '{c}' has only {total} samples (expected ~50). Using all available data.")
 
         shuffled = np.random.permutation(class_rows.index)
         cutoff = 30 if total >= 50 else int(total * 0.6)
@@ -204,7 +204,7 @@ df = load_penguins()
 df_proc, info = preprocess(df)
 
 with st.sidebar:
-    st.header("Experiment settings")
+    st.header("Experiment Settings")
 
     feat_options = ["CulmenLength", "CulmenDepth", "FlipperLength", "OriginLocation_enc", "BodyMass"]
     selected_features = st.multiselect(
@@ -253,35 +253,28 @@ with st.sidebar:
     run_button = st.button("Run Training", disabled=not valid_selection)
 
 if not valid_selection:
-    st.info("Please select exactly 2 features and exactly 2 classes to continue.")
-
+    st.info("Please select exactly 2 features and 2 classes to continue.")
 
 # ===============================================================
-# 🚧 MAIN IMPLEMENTATION SECTION — To be completed by the team 🚧
+# MAIN LOGIC
 # ===============================================================
-# Only run when button clicked and choices valid
 if run_button:
     if len(selected_features) != 2 or len(class_pair) != 2:
-        st.error("Please select exactly 2 features and exactly 2 classes in the sidebar.")
+        st.error("Please select exactly 2 features and 2 classes in the sidebar.")
     else:
         # -----------------------------------------------------------
-        # ✅ STEP 1 — Prepare train and test datasets
+        # ✅ STEP 1 — Data Preparation
         # -----------------------------------------------------------
         st.subheader("Step 1 – Data Preparation")
-
-        # Split the two chosen classes into train and test
         train_df, test_df = split_by_class(df_proc, "Species", tuple(class_pair), seed=seed)
 
-        # Extract only the chosen 2 features
         X_train = train_df[selected_features].to_numpy(dtype=float)
         X_test = test_df[selected_features].to_numpy(dtype=float)
 
-        # Map species → numeric labels  (-1 for first class, +1 for second)
         label_map = {class_pair[0]: -1, class_pair[1]: 1}
         y_train = train_df["Species"].map(label_map).to_numpy(dtype=int)
         y_test = test_df["Species"].map(label_map).to_numpy(dtype=int)
 
-        # Standardize data (fit on train)
         X_train_std, X_test_std, mu, sigma = normalize_train_test(X_train, X_test)
 
         st.write(f"Training samples: {len(y_train)}, Testing samples: {len(y_test)}")
@@ -290,91 +283,304 @@ if run_button:
         # -----------------------------------------------------------
         # ✅ STEP 2 — Initialize weights
         # -----------------------------------------------------------
-        # • Initialize random weights and bias (if enabled).
-        # • Use a random seed for reproducibility.
-        # TODO: Implement Step 2
-        n_features = 2  # always two because the UI enforces selecting exactly 2 features
-        weights, bias = initialize_weights(n_features=n_features,
-                                        use_bias=use_bias,
-                                        seed=seed,
-                                        scale=0.01)
-
-        # Display initialized parameters
-        st.write(f"**Weights shape:** {weights.shape}")
-        st.write(f"**Initial weights:** {np.round(weights, 6).tolist()}")
+        n_features = 2
+        weights, bias = initialize_weights(n_features=n_features, use_bias=use_bias, seed=seed, scale=0.01)
+        st.write(f"**Initial Weights:** {np.round(weights, 6).tolist()}")
         st.write(f"**Bias:** {round(bias, 6) if use_bias else 'None (disabled)'}")
-        
+
         # -----------------------------------------------------------
-        # ✅ STEP 3 — Train the model
+        # ✅ STEP 3 — Training
         # -----------------------------------------------------------
         st.subheader("Step 3 – Training the Model")
-
         if algorithm == "Perceptron":
             trained_weights, trained_bias, errors_history = perceptron_train(
-                X_train_std, y_train,
-                weights, bias,
-                eta=eta,
-                epochs=epochs,
-                use_bias=use_bias
+                X_train_std, y_train, weights, bias, eta=eta, epochs=epochs, use_bias=use_bias
             )
             st.success("Perceptron training complete!")
-            st.line_chart(errors_history, y_label="Number of Misclassifications per Epoch")
-            st.write(f"**Final Weights:** {np.round(trained_weights, 6).tolist()}")
-            st.write(f"**Final Bias:** {round(trained_bias, 6) if use_bias else 'None'}")
-
-        elif algorithm == "Adaline":
+            st.line_chart(errors_history, y_label="Misclassifications per Epoch")
+        else:
             trained_weights, trained_bias, mse_history = adaline_train(
-                X_train_std, y_train,
-                weights, bias,
-                eta=eta,
-                epochs=epochs,
-                use_bias=use_bias,
-                mse_threshold=mse_threshold
+                X_train_std, y_train, weights, bias, eta=eta, epochs=epochs,
+                use_bias=use_bias, mse_threshold=mse_threshold
             )
-            st.success(" Adaline training complete!")
+            st.success("Adaline training complete!")
             st.line_chart(mse_history, y_label="Mean Squared Error per Epoch")
-            st.write(f"**Final Weights:** {np.round(trained_weights, 6).tolist()}")
-            st.write(f"**Final Bias:** {round(trained_bias, 6) if use_bias else 'None'}")
 
-        # store final trained weights for next steps
-        weights, bias = trained_weights, trained_bias
+        st.write(f"**Final Weights:** {np.round(trained_weights, 6).tolist()}")
+        st.write(f"**Final Bias:** {round(trained_bias, 6) if use_bias else 'None'}")
 
+        # Save model to session state
+        st.session_state["weights"] = trained_weights
+        st.session_state["bias"] = trained_bias
+        st.session_state["mu"] = mu
+        st.session_state["sigma"] = sigma
+        st.session_state["use_bias"] = use_bias
+        st.session_state["class_pair"] = class_pair
+        st.session_state["selected_features"] = selected_features
+        st.session_state["algorithm"] = algorithm
+        st.success("Model saved to session.")
 
         # -----------------------------------------------------------
-        # ✅ STEP 4 — Test and evaluate
+        # ✅ STEP 4 — Test & Evaluation
         # -----------------------------------------------------------
-        # • Compute the model’s predictions for the test set.
-        # • Construct the confusion matrix manually (TP, TN, FP, FN).
-        # • Calculate and display accuracy.
-        # TODO: Implement Step 4
         st.subheader("Step 4 – Testing & Evaluation")
-
-        # Temporary dummy weights for demo (to be replaced after training)
-        # Use w_init, b_init for now to keep consistent structure
-        y_pred = np.where(np.dot(X_test_std, weights) + (bias if use_bias else 0) >= 0, 1, -1)
-
-        # Confusion matrix + accuracy
+        y_pred = np.where(np.dot(X_test_std, trained_weights) + (trained_bias if use_bias else 0) >= 0, 1, -1)
         cm = compute_confusion(y_test, y_pred, pos_label=1)
         accuracy = (cm["TP"] + cm["TN"]) / len(y_test) * 100
-
-        st.write("Confusion matrix:")
         st.json(cm)
-        st.write(f"Accuracy (with initial weights): **{accuracy:.2f}%**")
+        st.write(f"Accuracy: **{accuracy:.2f}%**")
 
         # -----------------------------------------------------------
-        # ✅ STEP 5 — Plot decision boundary
+        # ✅ STEP 5 — Decision Boundary
         # -----------------------------------------------------------
-        # • Plot the 2D decision boundary using the two selected features.
-        # • Show training and test samples with different markers.
-        # • Add labels and legend for both classes.
-        # • Display the figure in Streamlit.
-        # TODO: Implement Step 5
-        pass
+        st.subheader("Step 5 – Decision Boundary Visualization")
 
+        # Combine train/test in original scales for plotting
+        X_all = np.vstack([X_train, X_test])           # original feature scales
+        y_all = np.concatenate([y_train, y_test])
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+
+        # create a mesh over the original feature ranges
+        padding_x = (X_all[:, 0].max() - X_all[:, 0].min()) * 0.12
+        padding_y = (X_all[:, 1].max() - X_all[:, 1].min()) * 0.12
+        x_min, x_max = X_all[:, 0].min() - padding_x, X_all[:, 0].max() + padding_x
+        y_min, y_max = X_all[:, 1].min() - padding_y, X_all[:, 1].max() + padding_y
+
+        xx, yy = np.meshgrid(
+            np.linspace(x_min, x_max, 300),
+            np.linspace(y_min, y_max, 300)
+        )
+
+        # flatten grid and standardize using training mean & std (mu, sigma)
+        grid = np.c_[xx.ravel(), yy.ravel()]                  # original coords
+        grid_std = (grid - mu) / sigma                        # standardize each column
+
+        # get model prediction on standardized grid
+ 
+        # use trained weights & bias
+        w = trained_weights
+        b = trained_bias
+        # grid_std already computed earlier
+        net_grid = np.dot(grid_std, w) + (b if use_bias else 0.0)
+        grid_pred = np.where(net_grid >= 0.0, 1, -1).reshape(xx.shape)
+        # plot the decision regions (background)
+        cmap_regions = ListedColormap(["#FFEEEE", "#EEEEFF"])
+        ax.contourf(xx, yy, grid_pred, alpha=0.5, cmap=cmap_regions, levels=[-1, 0, 1])
+
+        # draw decision boundary in original coords
+        if abs(w[1]) < 1e-12:
+            if abs(w[0]) < 1e-12:
+                st.warning("Degenerate weights: cannot draw a valid decision boundary.")
+            else:
+                x_decision = mu[0] - (b * sigma[0] / w[0])
+                ax.axvline(x=x_decision, linestyle="--", linewidth=2, color="k", label="Decision boundary")
+        else:
+            x_vals = np.linspace(x_min, x_max, 400)
+            y_vals = mu[1] + sigma[1] * ( -b - w[0] * (x_vals - mu[0]) / sigma[0] ) / w[1]
+            ax.plot(x_vals, y_vals, linestyle="--", linewidth=2, color="k", label="Decision boundary")
+
+
+        # Plot train/test points with clear markers & single legend entry per set
+        inv_label_map = {-1: class_pair[0], 1: class_pair[1]}
+
+        # To avoid duplicate legend entries, collect handles manually
+        handles = []
+        labels = []
+        for lab_val, lab_name in inv_label_map.items():
+            mask_tr = (y_train == lab_val)
+            h_tr = ax.scatter(X_train[mask_tr, 0], X_train[mask_tr, 1],
+                       marker="o", s=60, label=f"Train: {lab_name}", edgecolor="k", linewidth=0.4, alpha=0.9)
+            handles.append(h_tr)
+            labels.append(f"Train: {lab_name}")
+
+            mask_te = (y_test == lab_val)
+            h_te = ax.scatter(X_test[mask_te, 0], X_test[mask_te, 1],
+                       marker="X", s=80, label=f"Test: {lab_name}", edgecolor="k", linewidth=0.8)
+            handles.append(h_te)
+            labels.append(f"Test: {lab_name}")
+
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+        ax.set_xlabel(selected_features[0])
+        ax.set_ylabel(selected_features[1])
+        ax.set_title(f"{algorithm} Decision Boundary between {class_pair[0]} and {class_pair[1]}")
+        ax.legend(handles=handles, labels=labels, loc="upper right", fontsize="small", framealpha=0.9)
+        ax.grid(True)
+
+        st.pyplot(fig)
         # -----------------------------------------------------------
-        # ✅ STEP 6 — Display notes and dataset preview
+        # ✅ STEP 6 – Notes
         # -----------------------------------------------------------
-        # • Add notes about label mapping and preprocessing.
-        # • Optionally show sample rows from the training and testing datasets.
-        # TODO: Implement Step 6
-        pass
+        st.subheader("Step 6 – Notes, Metrics & Dataset Preview")
+
+        st.info(
+            "Labels mapped: first selected class → -1, second selected class → +1. "
+            "OriginLocation was encoded as integers (OriginLocation_enc). "
+            "Missing values were imputed using per-class means where possible."
+        )
+
+        st.markdown(
+            "**Additional info:**  \n"
+            "- Features were standardized using training mean & std (μ, σ).  \n"
+            "- The decision boundary and decision regions were plotted back in original feature coordinates.  \n"
+            "- Circle = train points, × = test points."
+        )
+
+        # Recompute test predictions (just in case) using standardized test features
+        preds_test = np.where(np.dot(X_test_std, trained_weights) + (trained_bias if use_bias else 0.0) >= 0, 1, -1)
+
+        # Confusion matrix and derived metrics
+        cm = compute_confusion(y_test, preds_test, pos_label=1)
+        TP, TN, FP, FN = cm["TP"], cm["TN"], cm["FP"], cm["FN"]
+        accuracy = (TP + TN) / max(1, len(y_test))
+        precision = TP / (TP + FP) if (TP + FP) > 0 else 0.0
+        recall = TP / (TP + FN) if (TP + FN) > 0 else 0.0
+        f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+
+        metrics_df = pd.DataFrame({
+            "Metric": ["TP", "TN", "FP", "FN", "Accuracy", "Precision", "Recall", "F1"],
+            "Value": [TP, TN, FP, FN, f"{accuracy*100:.2f}%", f"{precision:.3f}", f"{recall:.3f}", f"{f1:.3f}"]
+        })
+
+        st.write("Confusion matrix and metrics:")
+        st.dataframe(metrics_df, width=420)
+
+        # Also show a tidy confusion matrix as a table
+        cm_table = pd.DataFrame([[TP, FP], [FN, TN]],
+                                index=[f"True {inv_label_map[1]}", f"True {inv_label_map[-1]}"],
+                                columns=[f"Pred {inv_label_map[1]}", f"Pred {inv_label_map[-1]}"])
+        st.write("Confusion matrix (table):")
+        st.table(cm_table)
+
+        # Show training history chart more robustly (if Perceptron: errors_history, if Adaline: mse_history)
+        st.write("Training history:")
+        if algorithm == "Perceptron":
+            # errors_history variable exists earlier in the perceptron branch
+            ser = pd.Series(errors_history, name="Misclassifications")
+            st.line_chart(ser)
+        else:
+            ser = pd.Series(mse_history, name="MSE")
+            st.line_chart(ser)
+
+        # Data preview (expandable)
+        with st.expander("Show train/test sample data (raw values)"):
+            st.write("Training set (first 10 rows):")
+            st.dataframe(train_df.head(10))
+            st.write("Test set (first 10 rows):")
+            st.dataframe(test_df.head(10))
+
+# -----------------------------------------------------------
+# ✅ Step 7 – Predict New Sample Using Signum Activation
+# -----------------------------------------------------------
+if "weights" in st.session_state:
+    st.subheader("Step 7 – Predict a New Sample")
+
+    selected_features = st.session_state["selected_features"]
+    col1, col2 = st.columns(2)
+    with col1:
+        feat1_val = st.number_input(f"Enter {selected_features[0]}:", value=0.0)
+    with col2:
+        feat2_val = st.number_input(f"Enter {selected_features[1]}:", value=0.0)
+
+    if st.button("Predict Class"):
+        # Create input vector
+        X_new = np.array([[feat1_val, feat2_val]])
+
+        # Standardize using training μ and σ
+        mu = st.session_state["mu"]
+        sigma = st.session_state["sigma"]
+        X_new_std = (X_new - mu) / sigma
+
+        # Get weights and bias
+        weights = st.session_state["weights"]
+        bias = st.session_state["bias"]
+        use_bias = st.session_state["use_bias"]
+
+        # Calculate net input
+        net_value = np.dot(X_new_std, weights) + (bias if use_bias else 0.0)
+
+        # Apply signum activation
+        y_output = np.where(net_value >= 0, 1, -1)
+
+        # Map back to class labels
+        class_pair = st.session_state["class_pair"]
+        inv_label_map = {-1: class_pair[0], 1: class_pair[1]}
+        predicted_label = inv_label_map[int(y_output)]
+
+        # Display results
+        st.write(f"**Net value:** {float(net_value):.4f}")
+        st.write(f"**Signum output (y):** {int(y_output)}")
+        st.success(f"Predicted Class: **{predicted_label}**")
+else:
+    st.info(" Train the model first, then enter values to predict.")
+
+def find_perfect_combos(df_proc, info, eta=0.01, epochs=50, use_bias=True, mse_threshold=None, seed=42):
+    feat_options = ["CulmenLength", "CulmenDepth", "FlipperLength", "OriginLocation_enc", "BodyMass"]
+    class_options = sorted(df_proc["Species"].unique().tolist())
+    algorithms = ["Perceptron", "Adaline"]
+
+    perfect_results = []
+
+    for i in range(len(feat_options)):
+        for j in range(i + 1, len(feat_options)):
+            selected_features = [feat_options[i], feat_options[j]]
+
+            for c1 in range(len(class_options)):
+                for c2 in range(c1 + 1, len(class_options)):
+                    class_pair = [class_options[c1], class_options[c2]]
+
+                    for algo in algorithms:
+                        # --- Split data ---
+                        train_df, test_df = split_by_class(df_proc, "Species", tuple(class_pair), seed=seed)
+                        X_train = train_df[selected_features].to_numpy(dtype=float)
+                        X_test = test_df[selected_features].to_numpy(dtype=float)
+                        label_map = {class_pair[0]: -1, class_pair[1]: 1}
+                        y_train = train_df["Species"].map(label_map).to_numpy(dtype=int)
+                        y_test = test_df["Species"].map(label_map).to_numpy(dtype=int)
+                        X_train_std, X_test_std, mu, sigma = normalize_train_test(X_train, X_test)
+
+                        # --- Init weights ---
+                        weights, bias = initialize_weights(2, use_bias=use_bias, seed=seed, scale=0.01)
+
+                        # --- Train model ---
+                        if algo == "Perceptron":
+                            trained_weights, trained_bias, _ = perceptron_train(
+                                X_train_std, y_train, weights, bias,
+                                eta=eta, epochs=epochs, use_bias=use_bias
+                            )
+                        else:
+                            trained_weights, trained_bias, _ = adaline_train(
+                                X_train_std, y_train, weights, bias,
+                                eta=eta, epochs=epochs, use_bias=use_bias, mse_threshold=mse_threshold
+                            )
+
+                        # --- Test model ---
+                        y_pred = np.where(
+                            np.dot(X_test_std, trained_weights) + (trained_bias if use_bias else 0) >= 0, 1, -1
+                        )
+
+                        cm = compute_confusion(y_test, y_pred, pos_label=1)
+                        acc = (cm["TP"] + cm["TN"]) / len(y_test) * 100
+
+                        if acc == 100.0:
+                            perfect_results.append({
+                                "Algorithm": algo,
+                                "Features": selected_features,
+                                "Classes": class_pair,
+                                "Accuracy": acc
+                            })
+
+    if perfect_results:
+        print("\nCombos that got 100% accuracy ")
+        for res in perfect_results:
+            print(f"Algo: {res['Algorithm']:<10} | Features: {res['Features']} | Classes: {res['Classes']}")
+    else:
+        print(" No 100% accuracy combos found.")
+
+    return perfect_results
+
+
+perfects = find_perfect_combos(df_proc, info, eta=0.01, epochs=100, use_bias=True)
+
+
