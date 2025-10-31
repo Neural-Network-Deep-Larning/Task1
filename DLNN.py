@@ -357,26 +357,29 @@ if run_button:
         grid_std = (grid - mu) / sigma                        # standardize each column
 
         # get model prediction on standardized grid
-        net_grid = np.dot(grid_std, weights) + (bias if use_bias else 0.0)
+ 
+        # use trained weights & bias
+        w = trained_weights
+        b = trained_bias
+        # grid_std already computed earlier
+        net_grid = np.dot(grid_std, w) + (b if use_bias else 0.0)
         grid_pred = np.where(net_grid >= 0.0, 1, -1).reshape(xx.shape)
-
         # plot the decision regions (background)
         cmap_regions = ListedColormap(["#FFEEEE", "#EEEEFF"])
         ax.contourf(xx, yy, grid_pred, alpha=0.5, cmap=cmap_regions, levels=[-1, 0, 1])
 
-        # plot the decision boundary line explicitly (optional, for clarity)
-        # We can compute boundary by solving for y in original coordinates when w1 != 0
-        if abs(weights[1]) < 1e-12:
-            # vertical boundary
-            if abs(weights[0]) < 1e-12:
+        # draw decision boundary in original coords
+        if abs(w[1]) < 1e-12:
+            if abs(w[0]) < 1e-12:
                 st.warning("Degenerate weights: cannot draw a valid decision boundary.")
             else:
-                x_decision = mu[0] - (bias * sigma[0] / weights[0])
+                x_decision = mu[0] - (b * sigma[0] / w[0])
                 ax.axvline(x=x_decision, linestyle="--", linewidth=2, color="k", label="Decision boundary")
         else:
             x_vals = np.linspace(x_min, x_max, 400)
-            y_vals = mu[1] + sigma[1] * ( -bias - weights[0] * (x_vals - mu[0]) / sigma[0] ) / weights[1]
+            y_vals = mu[1] + sigma[1] * ( -b - w[0] * (x_vals - mu[0]) / sigma[0] ) / w[1]
             ax.plot(x_vals, y_vals, linestyle="--", linewidth=2, color="k", label="Decision boundary")
+
 
         # Plot train/test points with clear markers & single legend entry per set
         inv_label_map = {-1: class_pair[0], 1: class_pair[1]}
@@ -425,7 +428,7 @@ if run_button:
         )
 
         # Recompute test predictions (just in case) using standardized test features
- preds_test = np.where(np.dot(X_test_std, trained_weights) + (trained_bias if use_bias else 0.0) >= 0, 1, -1)
+        preds_test = np.where(np.dot(X_test_std, trained_weights) + (trained_bias if use_bias else 0.0) >= 0, 1, -1)
 
         # Confusion matrix and derived metrics
         cm = compute_confusion(y_test, preds_test, pos_label=1)
@@ -511,4 +514,3 @@ if "weights" in st.session_state:
         st.success(f"Predicted Class: **{predicted_label}**")
 else:
     st.info("👆 Train the model first, then enter values to predict.")
-
