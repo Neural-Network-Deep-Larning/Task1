@@ -56,7 +56,6 @@ def preprocess(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
 # Algorithms Section 
 # -------------------------
 
-# TODO: Implement weight initialization (small random values, optional bias)
 
 def initialize_weights(n_features, use_bias=True, seed=42, scale=0.01):
     np.random.seed(seed)
@@ -69,7 +68,6 @@ def initialize_weights(n_features, use_bias=True, seed=42, scale=0.01):
 # Algorithms Section 
 # -------------------------
 
-# TODO: Implement weight initialization (small random values, optional bias)
 
 def perceptron_train(X, y, weights, bias, eta=0.01, epochs=50, use_bias=True):
    
@@ -142,7 +140,6 @@ def adaline_train(X, y, weights, bias, eta=0.01, epochs=50, use_bias=True, mse_t
 # Helper Functions 
 # -------------------------
 
-# TODO: Split dataset into 30 training and 20 testing samples per class
 def split_by_class(data: pd.DataFrame, target_col: str, chosen_classes: Tuple[str, str], seed: int = 42):
     
     np.random.seed(seed)
@@ -169,8 +166,6 @@ def split_by_class(data: pd.DataFrame, target_col: str, chosen_classes: Tuple[st
     return train_data, test_data
 
 
-# TODO: Standardize training and testing data using train mean and std
-
 
 def normalize_train_test(X_train: np.ndarray, X_test: np.ndarray):
     
@@ -184,7 +179,6 @@ def normalize_train_test(X_train: np.ndarray, X_test: np.ndarray):
     return X_train_std, X_test_std, mean_vec, std_vec
 
 
-# TODO: Create manual confusion matrix (TP, TN, FP, FN)
 
 def compute_confusion(y_true: np.ndarray, y_pred: np.ndarray, pos_label: int = 1):
    
@@ -194,6 +188,73 @@ def compute_confusion(y_true: np.ndarray, y_pred: np.ndarray, pos_label: int = 1
     FN = int(np.sum((y_true == pos_label) & (y_pred != pos_label)))
 
     return {"TP": TP, "TN": TN, "FP": FP, "FN": FN}
+
+
+def find_perfect_combos(df_proc, info, eta=0.01, epochs=50, use_bias=True, mse_threshold=None, seed=42):
+    feat_options = ["CulmenLength", "CulmenDepth", "FlipperLength", "OriginLocation_enc", "BodyMass"]
+    class_options = sorted(df_proc["Species"].unique().tolist())
+    algorithms = ["Perceptron", "Adaline"]
+
+    perfect_results = []
+
+    for i in range(len(feat_options)):
+        for j in range(i + 1, len(feat_options)):
+            selected_features = [feat_options[i], feat_options[j]]
+
+            for c1 in range(len(class_options)):
+                for c2 in range(c1 + 1, len(class_options)):
+                    class_pair = [class_options[c1], class_options[c2]]
+
+                    for algo in algorithms:
+                        # --- Split data ---
+                        train_df, test_df = split_by_class(df_proc, "Species", tuple(class_pair), seed=seed)
+                        X_train = train_df[selected_features].to_numpy(dtype=float)
+                        X_test = test_df[selected_features].to_numpy(dtype=float)
+                        label_map = {class_pair[0]: -1, class_pair[1]: 1}
+                        y_train = train_df["Species"].map(label_map).to_numpy(dtype=int)
+                        y_test = test_df["Species"].map(label_map).to_numpy(dtype=int)
+                        X_train_std, X_test_std, mu, sigma = normalize_train_test(X_train, X_test)
+
+                        # --- Init weights ---
+                        weights, bias = initialize_weights(2, use_bias=use_bias, seed=seed, scale=0.01)
+
+                        # --- Train model ---
+                        if algo == "Perceptron":
+                            trained_weights, trained_bias, _ = perceptron_train(
+                                X_train_std, y_train, weights, bias,
+                                eta=eta, epochs=epochs, use_bias=use_bias
+                            )
+                        else:
+                            trained_weights, trained_bias, _ = adaline_train(
+                                X_train_std, y_train, weights, bias,
+                                eta=eta, epochs=epochs, use_bias=use_bias, mse_threshold=mse_threshold
+                            )
+
+                        # --- Test model ---
+                        y_pred = np.where(
+                            np.dot(X_test_std, trained_weights) + (trained_bias if use_bias else 0) >= 0, 1, -1
+                        )
+
+                        cm = compute_confusion(y_test, y_pred, pos_label=1)
+                        acc = (cm["TP"] + cm["TN"]) / len(y_test) * 100
+
+                        if acc == 100.0:
+                            perfect_results.append({
+                                "Algorithm": algo,
+                                "Features": selected_features,
+                                "Classes": class_pair,
+                                "Accuracy": acc
+                            })
+
+    if perfect_results:
+        print("\nCombos that got 100% accuracy ")
+        for res in perfect_results:
+            print(f"Algo: {res['Algorithm']:<10} | Features: {res['Features']} | Classes: {res['Classes']}")
+    else:
+        print(" No 100% accuracy combos found.")
+
+    return perfect_results
+
 
 # -------------------------
 # Streamlit GUI
@@ -263,7 +324,7 @@ if run_button:
         st.error("Please select exactly 2 features and 2 classes in the sidebar.")
     else:
         # -----------------------------------------------------------
-        # ✅ STEP 1 — Data Preparation
+        #  STEP 1 — Data Preparation
         # -----------------------------------------------------------
         st.subheader("Step 1 – Data Preparation")
         train_df, test_df = split_by_class(df_proc, "Species", tuple(class_pair), seed=seed)
@@ -281,7 +342,7 @@ if run_button:
         st.success("Data prepared successfully!")
 
         # -----------------------------------------------------------
-        # ✅ STEP 2 — Initialize weights
+        #  STEP 2 — Initialize weights
         # -----------------------------------------------------------
         n_features = 2
         weights, bias = initialize_weights(n_features=n_features, use_bias=use_bias, seed=seed, scale=0.01)
@@ -289,7 +350,7 @@ if run_button:
         st.write(f"**Bias:** {round(bias, 6) if use_bias else 'None (disabled)'}")
 
         # -----------------------------------------------------------
-        # ✅ STEP 3 — Training
+        # STEP 3 — Training
         # -----------------------------------------------------------
         st.subheader("Step 3 – Training the Model")
         if algorithm == "Perceptron":
@@ -321,7 +382,7 @@ if run_button:
         st.success("Model saved to session.")
 
         # -----------------------------------------------------------
-        # ✅ STEP 4 — Test & Evaluation
+        #  STEP 4 — Test & Evaluation
         # -----------------------------------------------------------
         st.subheader("Step 4 – Testing & Evaluation")
         y_pred = np.where(np.dot(X_test_std, trained_weights) + (trained_bias if use_bias else 0) >= 0, 1, -1)
@@ -331,7 +392,7 @@ if run_button:
         st.write(f"Accuracy: **{accuracy:.2f}%**")
 
         # -----------------------------------------------------------
-        # ✅ STEP 5 — Decision Boundary
+        #  STEP 5 — Decision Boundary
         # -----------------------------------------------------------
         st.subheader("Step 5 – Decision Boundary Visualization")
 
@@ -410,7 +471,7 @@ if run_button:
 
         st.pyplot(fig)
         # -----------------------------------------------------------
-        # ✅ STEP 6 – Notes
+        # STEP 6 – Notes
         # -----------------------------------------------------------
         st.subheader("Step 6 – Notes, Metrics & Dataset Preview")
 
@@ -471,7 +532,7 @@ if run_button:
             st.dataframe(test_df.head(10))
 
 # -----------------------------------------------------------
-# ✅ Step 7 – Predict New Sample Using Signum Activation
+#  Step 7 – Predict New Sample Using Signum Activation
 # -----------------------------------------------------------
 if "weights" in st.session_state:
     st.subheader("Step 7 – Predict a New Sample")
@@ -484,10 +545,10 @@ if "weights" in st.session_state:
         feat2_val = st.number_input(f"Enter {selected_features[1]}:", value=0.0)
 
     if st.button("Predict Class"):
-        # Create input vector
+        #  Create input vector
         X_new = np.array([[feat1_val, feat2_val]])
 
-        # Standardize using training μ and σ
+        #  Standardize using training μ and σ
         mu = st.session_state["mu"]
         sigma = st.session_state["sigma"]
         X_new_std = (X_new - mu) / sigma
@@ -503,7 +564,7 @@ if "weights" in st.session_state:
         #  Apply signum activation
         y_output = np.where(net_value >= 0, 1, -1)
 
-        #  Map back to class labels
+        # Map back to class labels
         class_pair = st.session_state["class_pair"]
         inv_label_map = {-1: class_pair[0], 1: class_pair[1]}
         predicted_label = inv_label_map[int(y_output)]
@@ -514,4 +575,6 @@ if "weights" in st.session_state:
         st.success(f"Predicted Class: **{predicted_label}**")
 else:
     st.info(" Train the model first, then enter values to predict.")
-
+    
+    
+perfects = find_perfect_combos(df_proc, info, eta=0.01, epochs=100, use_bias=True)
